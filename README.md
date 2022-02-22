@@ -13,7 +13,7 @@
 
 ## 2. Pastas
 
-##### `/code`
+##### `/codigo`
 - Any code that manipulates build data and performs analysis should be put here.
 - All output should be redirected into `/output`. Ideally as a single data file called, say, `data.dta`.
 - Keep code clean and modularized.
