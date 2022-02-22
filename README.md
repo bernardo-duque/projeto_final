@@ -1,12 +1,5 @@
 
-This folder provides an all-encompassing working structure for empirical papers.
-
-It organizes every step of the process: merging and cleaning (several) data sets, performing analyses (tables, figures, regressions), writing the paper and talks themselves, and submitting it to journals.
-
-**To use it**: simply download it or fork it and adapt it to your own project!
-
-
-## Summary
+## Sumário
 
 1. Introdução e Links Relevantes
 2. Pastas
