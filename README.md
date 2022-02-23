@@ -10,6 +10,7 @@
 * [Dados de covid](https://brasil.io/dataset/covid19/files/)
 * [Base com discursos da cpi da covid](https://basedosdados.org/dataset/br-senado-cpipandemia)
 * [Dados dos candidatos](https://basedosdados.org/dataset/br-tse-eleicoes)
+* [Nomes em português](https://brasil.io/dataset/genero-nomes/files/)
 * Cruzar com resultado das eleicoes? 2018 e 2020?
 
 ## 2. Pastas
