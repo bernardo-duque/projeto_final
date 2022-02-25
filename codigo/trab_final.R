@@ -212,7 +212,7 @@ codigos <- resul$id_linha
 
 set.seed(24022022)
 
-classes <- c("ciencia","negacionista","neutro")
+classes <- c("favor","contra","neutro") # discurso favoravel, contrario ou neutro em relacao à conduta da pandemia
 
 discurso_modelo <- foreach(class=classes,.packages = "caret",.verbose = TRUE,.errorhandling = "pass") %do% {
   
