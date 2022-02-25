@@ -12,7 +12,7 @@
 ########   1.5 -                               ########
 ########                                                               ######## 
 ######## 2- Gráficos                                         ######## 
-########   2.1 -    ########
+########   2.1 -   dsds ########
 ########   2.2 -          ########
 ########   2.3 -                                                ######## 
 ########                                                               ######## 
@@ -76,7 +76,20 @@ candidatos <- candidatos %>%
 # desconsiderando depoentes 
 
 discurso <- discurso %>%
-  filter(categoria_discursante == "senador")
+  mutate(id_linha = row_number(), n=1) %>%
+  filter(categoria_discursante == "senador") 
+
+# setando seed para permitir reproducibilidade
+
+set.seed(23022022)
+
+# criando amostra para treinar o modelo de ML e gerando xlsx 
+
+discurso_manual <- sample_n(discurso,size = 500,replace = F) %>%
+  select(id_linha,nome_discursante,texto_discurso)
+
+write_xlsx(discurso_manual, path = "discurso_manual.xlsx")
+
 
 # pegando o vetor de nomes 
 
@@ -93,21 +106,8 @@ candidato_filt <- candidatos %>%
 # selecionando variaveis e dando join
 
 discurso <- discurso %>%
-  select(sequencial_sessao:sinalizacao_fora_microfone) %>%
+  select(id_linha,sequencial_sessao:sinalizacao_fora_microfone,n) %>%
   left_join(candidato_filt, by = c("nome_discursante"="nome_urna"))
-
-## Criando amostra para treinar o modelo de classificação de ML
-
-# setando seed para permitir reproducibilidade
-
-set.seed(23022022)
-
-# criando a amostra e gerando xlsx 
-
-discurso_manual <- sample_n(discurso,size = 200,replace = F)
-
-write_xlsx(discurso_manual, path = "discurso_manual.xlsx")
-
 
 ####----1.2) Tokenizando e removendo stop words----
 
@@ -140,36 +140,164 @@ names(nomes) <- "palavras"
 discurso_token <- discurso_token %>% 
   anti_join(nomes) 
 
-discurso_token %>% count(palavras,sort=T) #vendo casos de palavras que possuem frequencia muito alta, mas que nao provem informacao util
+#discurso_token %>% count(palavras,sort=T)
 
 ####----1.2.5) Correção de typos e stemming----
 
-# pegando apenas os radicais das palavras, para diminuir o numero de variaveis
+# pegando apenas os radicais das palavras, para perder menos informacao
 
-# discurso_token_stem <- discurso_token %>%
-#   mutate(palavras = wordStem(palavras,language = "portuguese" ))
+discurso_token <- discurso_token %>%
+  mutate(palavras = wordStem(palavras,language = "portuguese" ))
+
+####----1.3) Retirando palavras com baixa frequencia----
+
+check <- discurso_token %>% 
+  count(palavras) %>%
+  arrange(n)
+
+# vendo as palavras mais frequentes
+
+quantile(check$n,probs = seq(0,1,0.01))
+
+# 51% aparece 2 vezes ou menos, filtrando para esse numero (questao de memoria de processamento)
+# pegando apenas os radicais que aparecem nos ultimos 21% (a partir de 21 mencoes)
+
+check <- discurso_token %>% 
+  count(palavras) %>%
+  arrange(n) %>%
+  filter(n<21) %>%
+  select(palavras)
+
+discurso_token <- discurso_token %>%
+  anti_join(check)  #retirando as palavras com baixa frequencia
+
+length(unique(discurso_token$palavras))
+
+# # retirando linhas repetidas com a agregacao por radicais
+# 
+# discurso_token <- discurso_token[duplicated(discurso_token)==F,]
   
 
-####----1.3) Vetorizando os discursos----
+####----1.4) Vetorizando os discursos----
 
-#transformando as palavras em colunas
+# trocando os nomes das colunas que tem palavras contidas no discurso
 
-discurso_token_col <- discurso_token %>% 
+discurso_token <- discurso_token %>% 
   mutate(ocupacao_df = ocupacao, idade_df = idade,
-         instrucao_df = instrucao, raca_df = raca,
-         row = row_number(), n=1)%>% # trocando os nomes das colunas que tem palavras contidas no discurso
+         instrucao_df = instrucao, raca_df = raca)%>% 
   select(-c(ocupacao,idade,instrucao,raca)) 
 
-discurso_token_col <- discurso_token_col %>%
-  pivot_wider(names_from = palavras, values_from = n,values_fn = list)
+# salvando a base de discurso e removendo o restante do workspace por uma questão de memória
+
+#save(discurso)
+rm(candidato_filt, candidatos,discurso_manual, discurso, check)
+
+# vetorizando os discursos
+
+discurso_token <- discurso_token %>%
+  pivot_wider(names_from = palavras, values_from = n, values_fn = sum,values_fill = 0)
 
 col <- length(discurso_token)
-discurso_token[, 17:col][is.na(discurso_token[, 17:col])] <- 0 #transformando os NAs em 0
 
-#save(discurso_token,file="checkpoint_3 - 05.24.21.RData")  #salvando para nao ter que rodar novamente a parte de cima
-#load("checkpoint_3 - 05.24.21.RData")
-col <- length(discurso_token)
 
-##### 1.2 - Estatísticas Descritivas dos Participantes #####
+#### 2 - Machine Learning #####
+
+# lendo a amostra preenchida
+
+resul <- read_xlsx("discurso_manual_preenchido.csv")
+
+codigos <- resul$id_linha 
+
+####----2.2) Definindo train e test datasets----
+
+set.seed(24022022)
+
+classes <- c("ciencia","negacionista","neutro")
+
+discurso_modelo <- foreach(class=classes,.packages = "caret",.verbose = TRUE,.errorhandling = "pass") %do% {
+  
+  resul_aux <- resul[,c("id_linha",class)]
+  
+  amostra <- discurso_token %>%
+    filter(id_linha %in% codigos) %>%
+    left_join(resul_aux)
+  
+  ## Ordena validação
+  
+  amostra <- amostra[order(amostra$id_linha),]
+  
+  n_obs <- nrow(amostra)
+  
+  
+  # Misturando os indices para ficar aleatorio
+  amostra_aleatoria <- sample(n_obs)
+  
+  # Ordenando amostra pelos indices aleatorios
+  amostra <- amostra[amostra_aleatoria,]
+  
+  # Pegando numero de colunas para dividir em 65/35 a amostra em train e teste
+  divisao <- round(n_obs * 0.65)
+  
+  # Criando train
+  treino <- amostra[1:divisao,]
+  
+  # Criando teste
+  teste <- amostra[(divisao+1):n_obs, ]
+  
+  list(treino,teste)
+  
+}
+
+####----2.3) Métricas de validação----
+
+
+modelos <- list()
+
+tictoc::tic("fitando o modelo")
+modelos <- foreach(class=classes,.packages = "caret",.verbose = TRUE,.errorhandling = "remove") %do% {
+  
+  # bota a variavel dependente como coluna 1 e restante das colunas apenas as variaveis que vao entrar no modelo
+  
+  i <- which(classes==class)
+  treino_modelo <- dd_modelo[[i]][[1]] 
+  a <- which(colnames(treino_modelo)==class)
+  treino_modelo <- treino_modelo[,c(a,17:col)]
+  colnames(treino_modelo)[1] <- "y"
+  
+  # criando folds para  cross-validation ser igual para os modelos de random forest e xgbnet
+  
+  myFolds <- createFolds(y = treino_modelo$y,k=5)
+  myControl <- trainControl(
+    method = "cv", 
+    number = 5, 
+    index = myFolds,
+    verboseIter = TRUE
+  )
+  
+  # treina o modelo de random forest (ranger) testando 10 hiperparâmetros diferentes em 5 folds da cross-validation
+  
+  model_rf <- train(
+    as.factor(y) ~.,
+    tuneLength = 10,
+    data = treino_modelo, 
+    method = "ranger",
+    importance  = "impurity",
+    trControl = myControl,
+    verbose=TRUE
+  )
+  
+  model_xgb <- train(
+    as.factor(y) ~.,
+    data = treino_modelo, 
+    method = "xgbTree",
+    trControl = myControl,
+    verbose=TRUE
+  )
+  
+  list(model_rf,model_xgb,class)
+}
+toc() #1h26min
+
+##### 3 - Estatísticas Descritivas dos Participantes #####
 
 ##### 1.3 - Dados Covid #####
