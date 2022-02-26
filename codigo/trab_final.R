@@ -152,7 +152,9 @@ discurso_ml <- discurso_ml %>%
 
 # repetindo wordcloud com stems
 
-discurso_token <- discurso_ml %>%
+discurso_token <- discurso_ml # vai ser usado na frente nas estatisticas descritivas
+
+palavras <- discurso_ml %>%
   mutate(n=1) %>%
   group_by(palavras) %>%
   summarise(n=sum(n))
@@ -161,14 +163,12 @@ setwd("C://Users//duque//Desktop//PUC//Mestrado//Verão 1//Estatística//Data Scie
 
 png(filename = "wordcloud_cpi_stem.png",width = 1000,height = 1000)
 
-wordcloud(discurso_token$palavras, discurso_token$n, max.words = 50, min.freq = 1, 
+wordcloud(palavras$palavras, palavras$n, max.words = 50, min.freq = 1, 
           random.order=FALSE, colors=brewer.pal(6,"Dark2"), random.color=TRUE)
 
 dev.off()
 
 setwd("C://Users//duque//Desktop//PUC//Mestrado//Verão 1//Estatística//Data Science//Trabalho Final//input")
-
-rm(discurso_token)
 
 ####----1.3) Retirando palavras com baixa frequencia----
 
@@ -282,7 +282,7 @@ treino <- amostra[1:divisao,]
 teste <- amostra[(divisao+1):n_obs, ]
   
 
-####----2.2) Métricas de validação----
+####----2.2) Métricas de validação----####
 
 
 # modelos <- list()
@@ -378,5 +378,61 @@ save(matriz, file = "matriz.rda")
 setwd("C://Users//duque//Desktop//PUC//Mestrado//Verão 1//Estatística//Data Science//Trabalho Final//input")
   
 ##### 3 - Estatísticas Descritivas dos Participantes #####
+
+
+####---- 3.1 Numeros de discursos totais por senador ----####
+
+# transformando a classificacao em dummies
+
+discurso <- discurso %>%
+  mutate(n = 1) %>%
+  pivot_wider(names_from = classificacao_df,values_from = n, values_fill = 0)
+
+# criando as estatisticas para senadores e para o total
+
+estatisticas_senadores <- discurso %>%
+  group_by(nome_discursante, sigla_partido.x,sigla_uf) %>%
+  summarise(total = n(),
+            favor = sum(`A favor`),
+            contra = sum(Contra),
+            favor_perc = round(favor/(favor + contra),2),
+            contra_perc = round(contra/(favor + contra),2))
+
+estatisticas_gerais <- discurso %>%
+  summarise(total = n(),
+            favor = sum(`A favor`),
+            contra = sum(Contra),
+            favor_perc = round(favor/(favor + contra),2),
+            contra_perc = round(contra/(favor + contra),2),
+            neutro_perc = round((favor+contra)/total,2))
+
+
+## criando as tabelas  
+  
+png(filename = "mais_discursos.png",width = 800,height = 600)
+
+a <- estatisticas_senadores %>%
+  arrange(desc(total))
+
+a <- a[1:10,]
+
+a %>%
+  ggplot(aes(x = nome_discursante,y = total,fill = nome_discursante),
+         alpha = 0.9, col="white") +
+  geom_bar(stat='identity') + 
+  labs(title = "Total de Discursos por Senador",subtitle = "10 senadoes com mais discursos",x="") +
+  theme(plot.title = element_text(face = "bold"), legend.title = element_blank())
+
+
+
+
+estatisticas %>%
+  ggplot() +
+  scale_fill_gradient(name = "Proporção (%)", labels = scales::comma,low = "lightgreen",high = "darkgreen",na.value = "grey") + 
+  labs(title = "Cobertura Florestal por Município do Rio de Janeiro") +
+  theme(plot.title = element_text(face = "bold"))
+
+dev.off()
+
 
 ##### 1.3 - Dados Covid #####
