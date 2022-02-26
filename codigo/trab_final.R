@@ -85,10 +85,10 @@ set.seed(23022022)
 
 # criando amostra para treinar o modelo de ML e gerando xlsx 
 
-discurso_manual <- sample_n(discurso,size = 500,replace = F) %>%
+discurso_manual <- sample_n(discurso,size = 1000,replace = F) %>%
   select(id_linha,nome_discursante,texto_discurso)
 
-write_xlsx(discurso_manual, path = "discurso_manual.xlsx")
+#write_xlsx(discurso_manual, path = "discurso_manual.xlsx")
 
 
 # pegando o vetor de nomes 
@@ -204,15 +204,21 @@ col <- length(discurso_token)
 
 # lendo a amostra preenchida
 
-resul <- read_xlsx("discurso_manual_preenchido.csv")
+resul <- read_xlsx("discurso_manual_preenchido.xlsx")
 
-codigos <- resul$id_linha 
+codigos <- resul %>%
+  select(id_linha) %>%
+  pull
 
 ####----2.2) Definindo train e test datasets----
 
 set.seed(24022022)
 
-classes <- c("favor","contra","neutro") # discurso favoravel, contrario ou neutro em relacao à conduta da pandemia
+classes <- c("aux_df","contra_df","favor_df","neutro_df","classificacao_df") # discurso favoravel, contrario ou neutro em relacao à conduta da pandemia. 
+
+id_col <- which(colnames(discurso_token)=="raca_df")
+
+# Inclusive falas contra vacina ou favoraveis a cloroquina, que foram plataformas do governo durante a pandemia
 
 discurso_modelo <- foreach(class=classes,.packages = "caret",.verbose = TRUE,.errorhandling = "pass") %do% {
   
@@ -259,9 +265,9 @@ modelos <- foreach(class=classes,.packages = "caret",.verbose = TRUE,.errorhandl
   # bota a variavel dependente como coluna 1 e restante das colunas apenas as variaveis que vao entrar no modelo
   
   i <- which(classes==class)
-  treino_modelo <- dd_modelo[[i]][[1]] 
+  treino_modelo <- discurso_modelo[[i]][[1]] 
   a <- which(colnames(treino_modelo)==class)
-  treino_modelo <- treino_modelo[,c(a,17:col)]
+  treino_modelo <- treino_modelo[,c(a,(id_col + 1):col)]
   colnames(treino_modelo)[1] <- "y"
   
   # criando folds para  cross-validation ser igual para os modelos de random forest e xgbnet
@@ -296,7 +302,121 @@ modelos <- foreach(class=classes,.packages = "caret",.verbose = TRUE,.errorhandl
   
   list(model_rf,model_xgb,class)
 }
-toc() #1h26min
+toc() #14min
+
+melhor_modelo <- list()
+
+melhor_modelo <- foreach(class=classes,.packages = "caret",.verbose = TRUE,.errorhandling = "pass") %do% {
+  
+  # pega os modelos para cada classe
+  
+  i <- which(classes==class)
+  teste <- discurso_modelo[[i]][[2]] 
+  model_rf <- modelos[[i]][1]
+  model_xgb <- modelos[[i]][2]
+  
+  # faz o predict do modelo na amostra de teste e cria a matriz de confusao
+  
+  p_rf <- predict(model_rf,teste[,(id_col + 1):col])
+  p_rf <- p_rf[[1]] #pegando o vetor pro factor funcionar direito
+  p_xgb <- predict(model_xgb,teste[,(id_col + 1):col])
+  p_xgb <- p_xgb[[1]]
+  teste[[class]] <- as.factor(teste[[class]])
+  matriz_rf <- confusionMatrix(p_rf,teste[[class]],positive="1",mode="prec_recall")
+  matriz_xgb <- confusionMatrix(p_xgb,teste[[class]],positive="1",mode="prec_recall")
+  
+  # pegando o modelo com maior F1
+  
+  
+  if(is.na(matriz_rf$byClass[5])){
+    matriz <- matriz_xgb
+    model <- model_xgb
+    
+  } else {
+    
+    if (matriz_rf$byClass[7] > matriz_xgb$byClass[7]) {
+      matriz <- matriz_rf
+      model <- model_rf
+    }
+    if (matriz_rf$byClass[7] < matriz_xgb$byClass[7]) {
+      matriz <- matriz_xgb
+      model <- model_xgb
+    } 
+    
+    # se F1 for igual, desempate é precision
+    
+    if (matriz_rf$byClass[7]==matriz_xgb$byClass[7]) {
+      
+      if (matriz_rf$byClass[5] > matriz_xgb$byClass[5]) {
+        matriz <- matriz_rf
+        model <- model_rf
+      } else {
+        matriz <- matriz_xgb
+        model <- model_xgb
+      }
+      
+    } 
+  }
+  
+  list(model,matriz$byClass,matriz)
+  
+}
+
+
+
+metricas_df <- NA
+for (i in 1:length(melhor_modelo)) {
+  
+  if (i==1) {
+    metricas_df <- as.matrix(melhor_modelo[[i]][[2]])
+  } else {
+    metricas_df <- c(metricas_df,melhor_modelo[[i]][[2]])
+  }
+}
+
+rownames(metricas_df) <- classes
+metricas_df <- as.data.frame(metricas_df)
+metricas_df <- round(metricas_df,3)
+
+
+save(melhor_modelo,metricas_df,classes,file="modelos_final - 052421.rda")
+remove(list=ls())
+load("modelos_final - 052421.rda")
+load("checkpoint_3 - 05.24.21.RData")
+
+col <- length(discurso_token)
+linhas <- nrow(discurso_token)
+primeiro <- round((linhas*0.(id_col + 1)))
+segundo <- round((linhas*0.5))
+terceiro <- round((linhas*0.75))
+
+# separando a discurso_token em 4 devido a uma questão de alocação de memória do R
+
+um <- discurso_token[1:primeiro,(id_col + 1):col]
+dois <- discurso_token[(primeiro+1):segundo,(id_col + 1):col]
+tres <- discurso_token[(segundo+1):terceiro,(id_col + 1):col]
+quatro <- discurso_token[(terceiro+1):linhas,(id_col + 1):col]
+
+rm(discurso_token,primeiro,segundo,terceiro,linhas,col,metricas_df)
+
+tic("predizendo o modelo")
+resultados <- foreach(class = classes,.combine = "cbind",.verbose = TRUE,.errorhandling = "pass") %do% {
+  
+  i <- which(classes==class)
+  a <- melhor_modelo[[i]][[1]]
+  p_1 <- predict(a,um)
+  p_2 <- predict(a,dois)
+  p_3 <- predict(a,tres)
+  p_4 <- predict(a,quatro)
+  p <- c(p_1[[1]],p_2[[1]],p_3[[1]],p_4[[1]])
+  p <- as.data.frame(p)
+  colnames(p) <- class
+  p
+  
+}
+toc() #1h11
+
+rm(um,dois,tres,quatro,melhor_modelo)
 
 ##### 3 - Estatísticas Descritivas dos Participantes #####
 
