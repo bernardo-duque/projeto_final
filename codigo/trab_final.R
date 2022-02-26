@@ -4,17 +4,15 @@
 ########                                                               ########  
 ######## 1 - Importação e limpeza das bases                            ########
 ########                                                               ########
-########   1.1 - Limpando as strings e tratando base dos discursos     ########
-########       e dos candidatos                                        ########        
-########   1.2 -                         ########
-########   1.3 -   ########
-########   1.4 -                  ########
-########   1.5 -                               ########
+########   1.1 - Limpando as strings e juntando a base dos discursos   ########
+########         e dos candidatos                                      ########
+########   1.2 - Tokenizando e removendo stop words                    ########
+########   1.3 - Retirando palavras com baixa frequencia               ########
+########   1.4 - Vetorizando os discursos                              ########
 ########                                                               ######## 
-######## 2- Gráficos                                         ######## 
-########   2.1 -   dsds ########
-########   2.2 -          ########
-########   2.3 -                                                ######## 
+######## 2- Machine Learning                                           ######## 
+########   2.1 - Definindo train e test datasets                       ########
+########   2.2 - Métricas de validação                                 ########                                  
 ########                                                               ######## 
 ###############################################################################
 
@@ -35,7 +33,7 @@ candidatos <- read.csv("candidatos.csv")
 
 casos <- read.csv("caso.csv")
 
-##### 1.1 Limpando as strings e juntando a base dos discursos e dos candidatos #####
+####----1.1 Limpando as strings e juntando a base dos discursos e dos candidatos #####
 
 ## Criando funcao para padronizar strings (texto maisculo e sem acento)
 
@@ -142,7 +140,7 @@ discurso_token <- discurso_token %>%
 
 #discurso_token %>% count(palavras,sort=T)
 
-####----1.2.5) Correção de typos e stemming----
+## Stemming 
 
 # pegando apenas os radicais das palavras, para perder menos informacao
 
@@ -206,165 +204,144 @@ col <- length(discurso_token)
 
 resul <- read_xlsx("discurso_manual_preenchido.xlsx")
 
+# pegando os codigos dos discursos
+
 codigos <- resul %>%
   select(id_linha) %>%
   pull
 
-####----2.2) Definindo train e test datasets----
+####----2.1) Definindo train e test datasets----
 
 set.seed(24022022)
 
-# classes <- c("aux_df","contra_df","favor_df","neutro_df","classificacao_df") # discurso favoravel, contrario ou neutro em relacao à conduta da pandemia. 
+# pegando o numero da coluna anterior às palavras dos discursos
 
 id_col <- which(colnames(discurso_token)=="raca_df")
 
+# definindo a variavel a ser predita
+
 class <- "classificacao_df"
 
-# Inclusive falas contra vacina ou favoraveis a cloroquina, que foram plataformas do governo durante a pandemia
+# pegando apenas o codigo e a variavel
 
-# discurso_modelo <- foreach(class=classes,.packages = "caret",.verbose = TRUE,.errorhandling = "pass") %do% {
+resul_aux <- resul[,c("id_linha",class)]
   
-  resul_aux <- resul[,c("id_linha",class)]
-  
-  amostra <- discurso_token %>%
-    filter(id_linha %in% codigos) %>%
-    left_join(resul_aux)
-  
-  ## Ordena validação
-  
-  amostra <- amostra[order(amostra$id_linha),]
-  
-  n_obs <- nrow(amostra)
-  
-  
-  # Misturando os indices para ficar aleatorio
-  amostra_aleatoria <- sample(n_obs)
-  
-  # Ordenando amostra pelos indices aleatorios
-  amostra <- amostra[amostra_aleatoria,]
-  
-  # Pegando numero de colunas para dividir em 65/35 a amostra em train e teste
-  divisao <- round(n_obs * 0.65)
-  
-  # Criando train
-  treino <- amostra[1:divisao,]
-  
-  # Criando teste
-  teste <- amostra[(divisao+1):n_obs, ]
-  
-  # list(treino,teste)
-  
-# }
+# criando amostra
 
-####----2.3) Métricas de validação----
+amostra <- discurso_token %>%
+  filter(id_linha %in% codigos) %>%
+  left_join(resul_aux)
+  
+# ordena classificação manual
+  
+amostra <- amostra[order(amostra$id_linha),]
+  
+n_obs <- nrow(amostra)
+  
+# misturando os indices para ficar aleatorio
+
+amostra_aleatoria <- sample(n_obs)
+  
+# ordenando amostra pelos indices aleatorios
+
+amostra <- amostra[amostra_aleatoria,]
+  
+# pegando numero de colunas para dividir em 65/35 a amostra em train e teste
+
+divisao <- round(n_obs * 0.65)
+  
+
+# Criando train
+
+treino <- amostra[1:divisao,]
+  
+# Criando teste
+
+teste <- amostra[(divisao+1):n_obs, ]
+  
+
+####----2.2) Métricas de validação----
 
 
 # modelos <- list()
 
 tictoc::tic("fitando o modelo")
-# modelos <- foreach(class=classes,.packages = "caret",.verbose = TRUE,.errorhandling = "remove") %do% {
   
-  # bota a variavel dependente como coluna 1 e restante das colunas apenas as variaveis que vao entrar no modelo
+# bota a variavel dependente como coluna 1 e restante das colunas apenas as variaveis que vao entrar no modelo
   
-  i <- 1
-  treino_modelo <- treino
-  a <- which(colnames(treino_modelo)==class)
-  treino_modelo <- treino_modelo[,c(a,(id_col + 1):col)]
-  colnames(treino_modelo)[1] <- "y"
+i <- 1
+treino_modelo <- treino
+a <- which(colnames(treino_modelo)==class)
+treino_modelo <- treino_modelo[,c(a,(id_col + 1):col)]
+colnames(treino_modelo)[1] <- "y"
   
-  # criando folds para  cross-validation ser igual para os modelos de random forest e xgbnet
+# criando folds para  cross-validation ser igual para os modelos de random forest e xgbnet
   
-  myFolds <- createFolds(y = treino_modelo$y,k=5)
-  myControl <- trainControl(
-    method = "cv", 
-    number = 5, 
-    index = myFolds,
-    verboseIter = TRUE
-  )
+myFolds <- createFolds(y = treino_modelo$y,k=5)
+myControl <- trainControl(
+  method = "cv", 
+  number = 5, 
+  index = myFolds,
+  verboseIter = TRUE
+)
   
-  # treina o modelo de random forest (ranger) testando 10 hiperparâmetros diferentes em 5 folds da cross-validation
+# treina o modelo de random forest (ranger) testando 10 hiperparâmetros diferentes em 5 folds da cross-validation
   
-  model_rf <- train(
-    as.factor(y) ~.,
-    tuneLength = 10,
-    data = treino_modelo, 
-    method = "ranger",
-    importance  = "impurity",
-    trControl = myControl,
-    verbose=TRUE
-  )
+model_rf <- train(
+  as.factor(y) ~.,
+  tuneLength = 10,
+  data = treino_modelo, 
+  method = "ranger",
+  importance  = "impurity",
+  trControl = myControl,
+  verbose=TRUE
+)
   
-  model_xgb <- train(
-    as.factor(y) ~.,
-    data = treino_modelo, 
-    method = "xgbTree",
-    trControl = myControl,
-    verbose=TRUE
-  )
+model_xgb <- train(
+  as.factor(y) ~.,
+  data = treino_modelo, 
+  method = "xgbTree",
+  trControl = myControl,
+  verbose=TRUE
+)
   
-  # list(model_rf,model_xgb,class)
-# }
-toc() #14min
+toc() #14 min
+  
+# faz o predict do modelo na amostra de teste e cria as matrizes de confusao
+  
+p_rf <- predict(model_rf,teste[,(id_col + 1):col])
+p_xgb <- predict(model_xgb,teste[,(id_col + 1):col])
+  
+teste[[class]] <- as.factor(teste[[class]])
+  
+matriz_rf <- confusionMatrix(p_rf,teste[[class]],mode="prec_recall")
+matriz_rf <- as.data.frame(matriz_rf$byClass)
+  
+matriz_xgb <- confusionMatrix(p_xgb,teste[[class]],mode="prec_recall")
+matriz_xgb <- as.data.frame(matriz_xgb$byClass)
+  
+# pegando o modelo com maior F1
+  
+print(matriz_rf[7])
+print(matriz_xgb[7])
+  
+# modelo xgb esta melhor especificado
+  
+modelo <- model_xgb
+matriz <- round(matriz_xgb,3)
+  
+rm(model_xgb,model_rf,matriz_rf,matriz_xgb,resul_aux, amostra,myControl,myFolds,nomes,resul,resul_aux,teste,treino,treino_modelo)
 
-# melhor_modelo <- list()
-
-# melhor_modelo <- foreach(class=classes,.packages = "caret",.verbose = TRUE,.errorhandling = "pass") %do% {
+# predizendo o modelo
   
-  # pega os modelos para cada classe
+discurso_token$classificacao_df <- predict(modelo,discurso_token[,(id_col + 1):col])
+
+discurso <- discurso_token %>% 
+  select(id_linha:raca_df,classificacao_df)
+
+discurso_token <- discurso_token %>%
+  pivot_longer(names_to = "palavras",values_drop_na = )
   
-  # i <- which(classes==class)
-  # teste <- discurso_modelo[[i]][[2]] 
-  # model_rf <- modelos[[i]][1]
-  # model_xgb <- modelos[[i]][2]
-  
-  # faz o predict do modelo na amostra de teste e cria a matriz de confusao
-  
-  p_rf <- predict(model_rf,teste[,(id_col + 1):col])
-  # p_rf <- p_rf[[1]] #pegando o vetor pro factor funcionar direito
-  p_xgb <- predict(model_xgb,teste[,(id_col + 1):col])
-  # p_xgb <- p_xgb[[1]]
-  teste[[class]] <- as.factor(teste[[class]])
-  matriz_rf <- confusionMatrix(p_rf,teste[[class]],mode="prec_recall")
-  matriz_rf <- as.data.frame(matriz_rf$byClass)
-  matriz_xgb <- confusionMatrix(p_xgb,teste[[class]],mode="prec_recall")
-  matriz_xgb <- as.data.frame(matriz_xgb$byClass)
-  
-  # pegando o modelo com maior F1
-  
-  print(matriz_rf[7])
-  print(matriz_xgb[7])
-  
-  # modelo xgb esta melhor especificado
-  
-  modelo <- model_xgb
-  matriz <- round(matriz_xgb,3)
-  
-  rm(model_xgb,model_rf,matriz_rf,matriz_xgb,resul_aux)
-
-  # }
-
-
-# col <- length(discurso_token)
-# linhas <- nrow(discurso_token)
-# primeiro <- round((linhas*0.(id_col + 1)))
-# segundo <- round((linhas*0.5))
-# terceiro <- round((linhas*0.75))
-
-# separando a discurso_token em 4 devido a uma questão de alocação de memória do R
-
-# um <- discurso_token[1:primeiro,(id_col + 1):col]
-# dois <- discurso_token[(primeiro+1):segundo,(id_col + 1):col]
-# tres <- discurso_token[(segundo+1):terceiro,(id_col + 1):col]
-# quatro <- discurso_token[(terceiro+1):linhas,(id_col + 1):col]
-
-rm(discurso_token,primeiro,segundo,terceiro,linhas,col,metricas_df)
-
-tic("predizendo o modelo")
-  discurso_token$classificacao_df <- predict(modelo,discurso_token[,(id_col + 1):col])
-toc() #5 segundos
-
-rm(um,dois,tres,quatro,melhor_modelo)
-
 ##### 3 - Estatísticas Descritivas dos Participantes #####
 
 ##### 1.3 - Dados Covid #####
