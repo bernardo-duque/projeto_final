@@ -17,11 +17,11 @@
 ###############################################################################
 
 
-setwd("C://Users//duque//Desktop//PUC//Mestrado//Verão 1//Estatística//Data Science//Trabalho Final//Input")
+setwd("C://Users//duque//Desktop//PUC//Mestrado//Verão 1//Estatística//Data Science//Trabalho Final//input")
 
 pacman::p_load(sf, tidyverse, geobr, ggplot2, terra, spData, stringr, caret,
                stopwords, tictoc, foreach, SnowballC, hunspell, quanteda, readxl,writexl,
-               tidytext)
+               tidytext, RColorBrewer, tm, wordcloud, ranger, xgboost, grDevices)
 
 ##### 1. Importando e limpando as bases relacionadas aos candidatos #####
 
@@ -111,7 +111,7 @@ discurso <- discurso %>%
 
 # removendo stop words
 
-stop_vf <- stopwords(language = "pt",source = "stopwords-iso") 
+stop_vf <- stopwords::stopwords(language = "pt",source = "stopwords-iso") 
 
 stop_vf <- as.data.frame(stop_vf)
 
@@ -119,37 +119,60 @@ colnames(stop_vf) <- "palavras"
 
 # quebrando as palavras por linha
 
-discurso_token <- discurso %>%
+discurso_ml <- discurso %>%
   unnest_tokens(output = "palavras",input = texto_discurso, token = "words") 
 
-discurso_token <- discurso_token %>% 
+discurso_ml <- discurso_ml %>% 
   anti_join(stop_vf) #retira as stop words
 
-# retirando nomes de pessoas
+# criando base com palavras agrupadas por frequencia para wordcloud
 
-nomes <- read.csv("nomes.csv")
+discurso_token <- discurso_ml %>%
+  mutate(n=1) %>%
+  group_by(palavras) %>%
+  summarise(n=sum(n))
 
-nomes <- unique(nomes$group_name) %>%
-  toupper() %>%
-  as.data.frame()
+setwd("C://Users//duque//Desktop//PUC//Mestrado//Verão 1//Estatística//Data Science//Trabalho Final//output")
 
-names(nomes) <- "palavras"
+png(filename = "wordcloud_cpi.png",width = 1000,height = 1000)
 
-discurso_token <- discurso_token %>% 
-  anti_join(nomes) 
+wordcloud(discurso_token$palavras, discurso_token$n, max.words = 50, min.freq = 1, 
+          random.order=FALSE, colors=brewer.pal(6,"Dark2"), random.color=TRUE)
 
-#discurso_token %>% count(palavras,sort=T)
+dev.off()
+
+setwd("C://Users//duque//Desktop//PUC//Mestrado//Verão 1//Estatística//Data Science//Trabalho Final//input")
 
 ## Stemming 
 
 # pegando apenas os radicais das palavras, para perder menos informacao
 
-discurso_token <- discurso_token %>%
+discurso_ml <- discurso_ml %>%
   mutate(palavras = wordStem(palavras,language = "portuguese" ))
+
+# repetindo wordcloud com stems
+
+discurso_token <- discurso_ml %>%
+  mutate(n=1) %>%
+  group_by(palavras) %>%
+  summarise(n=sum(n))
+
+setwd("C://Users//duque//Desktop//PUC//Mestrado//Verão 1//Estatística//Data Science//Trabalho Final//output")
+
+png(filename = "wordcloud_cpi_stem.png",width = 1000,height = 1000)
+
+wordcloud(discurso_token$palavras, discurso_token$n, max.words = 50, min.freq = 1, 
+          random.order=FALSE, colors=brewer.pal(6,"Dark2"), random.color=TRUE)
+
+dev.off()
+
+setwd("C://Users//duque//Desktop//PUC//Mestrado//Verão 1//Estatística//Data Science//Trabalho Final//input")
+
+rm(discurso_token)
 
 ####----1.3) Retirando palavras com baixa frequencia----
 
-check <- discurso_token %>% 
+check <- discurso_ml %>% 
   count(palavras) %>%
   arrange(n)
 
@@ -157,30 +180,29 @@ check <- discurso_token %>%
 
 quantile(check$n,probs = seq(0,1,0.01))
 
-# 51% aparece 2 vezes ou menos, filtrando para esse numero (questao de memoria de processamento)
 # pegando apenas os radicais que aparecem nos ultimos 21% (a partir de 21 mencoes)
 
-check <- discurso_token %>% 
+check <- discurso_ml %>% 
   count(palavras) %>%
   arrange(n) %>%
   filter(n<21) %>%
   select(palavras)
 
-discurso_token <- discurso_token %>%
+discurso_ml <- discurso_ml %>%
   anti_join(check)  #retirando as palavras com baixa frequencia
 
-length(unique(discurso_token$palavras))
+length(unique(discurso_ml$palavras))
 
 # # retirando linhas repetidas com a agregacao por radicais
 # 
-# discurso_token <- discurso_token[duplicated(discurso_token)==F,]
+# discurso_ml <- discurso_ml[duplicated(discurso_ml)==F,]
   
 
 ####----1.4) Vetorizando os discursos----
 
 # trocando os nomes das colunas que tem palavras contidas no discurso
 
-discurso_token <- discurso_token %>% 
+discurso_ml <- discurso_ml %>% 
   mutate(ocupacao_df = ocupacao, idade_df = idade,
          instrucao_df = instrucao, raca_df = raca)%>% 
   select(-c(ocupacao,idade,instrucao,raca)) 
@@ -192,10 +214,10 @@ rm(candidato_filt, candidatos,discurso_manual, discurso, check)
 
 # vetorizando os discursos
 
-discurso_token <- discurso_token %>%
+discurso_ml <- discurso_ml %>%
   pivot_wider(names_from = palavras, values_from = n, values_fn = sum,values_fill = 0)
 
-col <- length(discurso_token)
+col <- length(discurso_ml)
 
 
 #### 2 - Machine Learning #####
@@ -216,7 +238,7 @@ set.seed(24022022)
 
 # pegando o numero da coluna anterior às palavras dos discursos
 
-id_col <- which(colnames(discurso_token)=="raca_df")
+id_col <- which(colnames(discurso_ml)=="raca_df")
 
 # definindo a variavel a ser predita
 
@@ -228,7 +250,7 @@ resul_aux <- resul[,c("id_linha",class)]
   
 # criando amostra
 
-amostra <- discurso_token %>%
+amostra <- discurso_ml %>%
   filter(id_linha %in% codigos) %>%
   left_join(resul_aux)
   
@@ -305,7 +327,7 @@ model_xgb <- train(
   verbose=TRUE
 )
   
-toc() #14 min
+toc() #5min
   
 # faz o predict do modelo na amostra de teste e cria as matrizes de confusao
   
@@ -330,17 +352,30 @@ print(matriz_xgb[7])
 modelo <- model_xgb
 matriz <- round(matriz_xgb,3)
   
-rm(model_xgb,model_rf,matriz_rf,matriz_xgb,resul_aux, amostra,myControl,myFolds,nomes,resul,resul_aux,teste,treino,treino_modelo)
+rm(model_xgb,model_rf,matriz_rf,matriz_xgb,resul_aux, amostra,myControl,myFolds,resul,teste,treino,treino_modelo)
 
 # predizendo o modelo
   
-discurso_token$classificacao_df <- predict(modelo,discurso_token[,(id_col + 1):col])
+discurso_ml$classificacao_df <- predict(modelo,discurso_ml[,(id_col + 1):col])
 
-discurso <- discurso_token %>% 
+discurso <- discurso_ml %>% 
   select(id_linha:raca_df,classificacao_df)
 
-discurso_token <- discurso_token %>%
-  pivot_longer(names_to = "palavras",values_drop_na = )
+rm(discurso_ml)
+
+# exportando a base e salvando a confusion matrix
+
+setwd("C://Users//duque//Desktop//PUC//Mestrado//Verão 1//Estatística//Data Science//Trabalho Final//output")
+
+write.csv(discurso,"discurso_cpi_classificado.csv")
+
+matriz <- matriz %>% 
+  select(Precision:Prevalence,`Balanced Accuracy`)
+
+save(matriz, file = "matriz.rda")
+
+
+setwd("C://Users//duque//Desktop//PUC//Mestrado//Verão 1//Estatística//Data Science//Trabalho Final//input")
   
 ##### 3 - Estatísticas Descritivas dos Participantes #####
 
