@@ -21,7 +21,7 @@ setwd("C://Users//duque//Desktop//PUC//Mestrado//Verão 1//Estatística//Data Scie
 
 pacman::p_load(sf, tidyverse, geobr, ggplot2, terra, spData, stringr, caret,
                stopwords, tictoc, foreach, SnowballC, hunspell, quanteda, readxl,writexl,
-               tidytext, RColorBrewer, tm, wordcloud, ranger, xgboost, grDevices)
+               tidytext, RColorBrewer, tm, wordcloud, ranger, xgboost, grDevices, reshape2)
 
 ##### 1. Importando e limpando as bases relacionadas aos candidatos #####
 
@@ -374,10 +374,8 @@ matriz <- matriz %>%
 
 save(matriz, file = "matriz.rda")
 
-
-setwd("C://Users//duque//Desktop//PUC//Mestrado//Verão 1//Estatística//Data Science//Trabalho Final//input")
   
-##### 3 - Estatísticas Descritivas dos Participantes #####
+##### 3 - Estatísticas Descritivas #####
 
 
 ####---- 3.1 Numeros de discursos totais por senador ----####
@@ -406,33 +404,114 @@ estatisticas_gerais <- discurso %>%
             contra_perc = round(contra/(favor + contra),2),
             neutro_perc = round((favor+contra)/total,2))
 
-
 ## criando as tabelas  
-  
-png(filename = "mais_discursos.png",width = 800,height = 600)
+
+# mais discursos
+
+png(filename = "mais_discursos.png",width = 1000,height = 800)
 
 a <- estatisticas_senadores %>%
-  arrange(desc(total))
+  ungroup() %>%
+  arrange(desc(total)) %>%
+  group_by(nome_discursante)
 
-a <- a[1:10,]
+a <- melt(a[,c('nome_discursante','total','contra_perc')],id.vars = 1)
+
+b <- a[1:5,]$nome_discursante
+a <- a %>%
+  filter(nome_discursante %in% b) %>%
+  mutate(value = ifelse(value<1,value*10000,value))
 
 a %>%
-  ggplot(aes(x = nome_discursante,y = total,fill = nome_discursante),
+  ggplot(aes(x = nome_discursante,y = value),
          alpha = 0.9, col="white") +
-  geom_bar(stat='identity') + 
-  labs(title = "Total de Discursos por Senador",subtitle = "10 senadoes com mais discursos",x="") +
-  theme(plot.title = element_text(face = "bold"), legend.title = element_blank())
-
-
-
-
-estatisticas %>%
-  ggplot() +
-  scale_fill_gradient(name = "Proporção (%)", labels = scales::comma,low = "lightgreen",high = "darkgreen",na.value = "grey") + 
-  labs(title = "Cobertura Florestal por Município do Rio de Janeiro") +
-  theme(plot.title = element_text(face = "bold"))
+  geom_col(stat='identity',fill = variable,position = position_dodge()) +
+  labs(title = "Total de Discursos por Senador",subtitle = "Top 5 senadores",x="",y="") +
+  theme(plot.title = element_text(face = "bold"), legend.title = element_blank()) 
 
 dev.off()
 
 
+
+ggplot(a,aes(x = nome_discursante,y = value)) + 
+  geom_bar(aes(fill = variable),stat = "identity",position = "dodge") +
+  geom_text(aes(label = c(value[1],value[2]/10000)), vjust = 2, size = 5, color = "#ffffff")
+
+
+
+
+
+
+
+# mais discursos
+  
+png(filename = "mais_discursos.png",width = 1000,height = 800)
+
+a <- estatisticas_senadores %>%
+  arrange(desc(total))
+
+a <- a[1:5,]
+
+a %>%
+  ggplot(aes(x = nome_discursante,y = total),
+         alpha = 0.9, col="white") +
+  geom_bar(stat='identity',fill = "#0099f9") +
+  labs(title = "Total de Discursos por Senador",subtitle = "Top 5 senadores",x="",y="") +
+  theme(plot.title = element_text(face = "bold"), legend.title = element_blank()) + 
+  geom_text(aes(label = total), vjust = 2, size = 5, color = "#ffffff")
+
+dev.off()
+
+# mais discursos favoraveis 
+
+png(filename = "mais_favor.png",width = 1000,height = 800)
+
+a <- estatisticas_senadores %>%
+  arrange(desc(favor))
+
+a <- a[1:5,]
+
+a %>%
+  ggplot(aes(x = nome_discursante,y = favor),
+         alpha = 0.9, col="white") +
+  geom_bar(stat='identity',fill = "#339900") +
+  labs(title = "Total de Discursos a Favor do Governo por Senador",subtitle = "Top 5 senadores",x="",y="") +
+  theme(plot.title = element_text(face = "bold"), legend.title = element_blank()) + 
+  geom_text(aes(label = favor), vjust = 2, size = 5, color = "#ffffff")
+
+dev.off()
+
+png(filename = "mais_contra.png",width = 1000,height = 800)
+
+# mais discursos contra 
+
+a <- estatisticas_senadores %>%
+  arrange(desc(contra))
+
+a <- a[1:5,]
+
+a %>%
+  ggplot(aes(x = nome_discursante,y = contra),
+         alpha = 0.9, col="white") +
+  geom_bar(stat='identity',fill = "#cc0000") +
+  labs(title = "Total de Discursos Contra o Governo por Senador",subtitle = "Top 5 senadores",x="",y="") +
+  theme(plot.title = element_text(face = "bold"), legend.title = element_blank()) + 
+  geom_text(aes(label = contra), vjust = 2, size = 5, color = "#ffffff")
+
+dev.off()
+
+####---- 3.2 Distribuição por estado, genero e partido ----####
+
+## Distribuição por estado
+
+# pegando o mapa dos estados
+
+estados <- read_state(code_state = "all", year = 2020)
+
+rio_de_janeiro %>%
+  ggplot() +
+  geom_sf(aes(fill=pct_cobertura), alpha = 0.8, col="white") +
+  scale_fill_viridis_c(name = "Porcentagem", labels = scales::comma) + 
+  labs(title = "Cobertura vegetal no Estado do Rio de Janeiro", subtitle = "Porcentagem por município", caption = "Fonte: MapBiomas, IPEA") +
+  theme(plot.title = element_text(face = "bold"))
 ##### 1.3 - Dados Covid #####
