@@ -1,0 +1,105 @@
+---
+title: "**Trabalho Final**"
+subtitle: "Estatística e Ciência de Dados - PUC-Rio Verão 2022"
+author: "Bernardo Duque"
+date: "27/02/2022"
+output:
+  pdf_document:
+    toc: true
+    number_sections: true
+---
+```{r, echo = F}
+setwd("C://Users//duque//Desktop//PUC//Mestrado//Verão 1//Estatística//Data Science//Trabalho Final//output")
+```
+
+ 
+# Objetivo
+
+<font size="4"> 
+
+\par    Este trabalho teve como objetivo analisar os discursos e a composição da Comissão Parlamentar de Inquérito (CPI) da Pandemia, que teve início em 27 de abril de 2021 e fim em 26 de outubro do mesmo ano. A comissão teve ampla divulgação midiática e alto acompanhamento por parte da população^[De acordo com dados do Instituto DataSenado, 73% da população tomou conhecimento da CPI. Fonte: https://www12.senado.leg.br/noticias/materias/2021/07/19/datasenado-73-dos-brasileiros-conhecem-a-cpi-da-pandemia]. Sua relevância se deu principalmente pelo descaso do Governo Federal no combate à crise sanitária instalada no país e no mundo.
+
+\par    Para isso, foi criado um modelo de *Machine Learning (ML)* para automatizar a análise, indicando se o discurso era favorável ou contra atuação da União durante a pandemia. Também foram construídas estatísticas descritivas e mapas com a composição dos participantes da CPI, com o output do modelo de ML e com o cruzamento dos dados de covid no país.
+
+</font> 
+
+# Dados Utilizados
+
+\par    Para realizar a análise, foram utilizadas inicialmente 3 bases de dados, a saber:
+
+* **[Base com discursos da CPI da Pandemia](https://basedosdados.org/dataset/br-senado-cpipandemia)**
+
+  * Principal base utilizada neste trabalho. Contém todas as falas, tanto de senadores quanto de depoentes, no decorrer da CPI, incluindo tambem falas de ordem e de reuniões de requerimentos
+
+* **[Dados de covid](https://brasil.io/dataset/covid19/files/)**
+
+  * Base com dados acumulados da pandemia, com acumulação diária. Inclui número de casos, número de mortes, taxas por cem mil habitantes e a unidade de análise está no nível dos estados 
+
+* **[Dados dos candidatos](https://basedosdados.org/dataset/br-tse-eleicoes)**
+  
+  * Base com informações dos candidatos, como idade, instrução, profissão, gênero, entre outras
+
+\par As bases podem ser acessadas diretamente pelos link acima ou clicando [aqui](https://drive.google.com/drive/folders/13ozE9GhQaxSmfw-wjO_2QT_frnw5nHxU?usp=sharing)
+
+# Metodologia
+
+## Tratamento das strings
+
+\par Como visto na seção (#Dados Utilizados), a principal base utilizada foi a relativa aos discursos da CPI da Pandemia. Por se tratar de uma base cujos dados principais estavam no formato de texto (string), foi necessário um tratamento considerável dos dados para convertê-los em informação. Foram analisadas apenas as falas dos senadores; as dos depoentes foram filtradas. 
+
+\par De forma geral, o processo adotado para tratar as strings foi a chamada tokenização. Pegou-se todas as palavras contidas em cada discurso e cada uma foi transformada em uma linha com as demais informações duplicadas do discurso. Em seguida, foram retiradas as chamadas stop words, que são palavras que não acrescentam informação, mas geram ruído nas análises e aumentam o custo de processamento do algoritmo. 
+
+\par Desses primeiros passos, já foi possível extrair alguma informação, por meio de nuvens de palavras, que indicam as palavras que tiveram maior frequência durante os discursos. Uma foi gerada após esses passos já explicados, enquanto a segunda foi feita após o processo de *stemming*. Isto é, foram agrupadas palavras com bases em seus radicais; isso permite reduzir o número de palavras analisadas, focando em seus significados, ou seja, reduzir a quantidade de variáveis sem perder informação.
+
+\par Em seguida, cada palavra "stemizada" foi transformada em uma coluna (variável), permitindo a aplicação do modelo de ML.
+
+## Machine Learning
+
+\par  Anterior a isso, porém, foi gerada uma amostra aleatória replicável de 1000 observações da base original com os discursos^[Foi utilizada a função set.seed()]. As falas foram classificadas como:
+
+* Contra a atuação do Governo Federal na pandemia
+
+  * Inclui menções criticando a atuação do governo de forma geral, por meio da crítica a seus ministérios ou à própria pessoa do Presidente da República
+  
+  * Exemplo: INSERIR IMAGEM
+  
+* A favor da atuação do Governo Federal na pandemia
+
+  * Inclui menções que louvam a atuação do governo de forma geral, por meio de apologia a medicamentos do chamado Kit Covid e defesas às críticas de outros senadores
+  
+  * Exemplo: INSERIR IMAGEM
+  
+* Neutras ou de questões de ordem
+
+  * Inclui falas que não criticam nem defendem o Governo Federal, falas sobre requerimentos, perguntas sem juízo de valor ou questões de ordem corriqueiras de uma CPI
+  
+  * Exemplo: INSERIR IMAGEM
+  
+
+
+
+# Estatísticas Descritivas
+
+## Figura 1 - Wordcloud
+
+A primeira word cloud pode ser vista aqui:
+
+![Nuvem de Palavras - sem *stemming*](wordcloud_cpi.png)
+
+##
+
+# Limitações
+
+* Alguns nomes de senadores acabaram se perdendo. É necessário utilizar regex para filtrar corretamente nomes como por exemplo Randolfe Rodrigues, Marcos Rogerio, Fabiano Contarato, Styvenson Valentim
+
+* Muitas interrupcoes nas falas, e falas que nao são discursos de fato mas palavras de ordem etc
+  
+  * maneira de cortar essas interrupcoes e juntar os discursos interrompidos, bem como cortar as falas de ordem (colunas nao funcionam perfeitamente)
+  
+  limpar sigla partido
+
+```{r , echo=FALSE}
+
+```
+
+
