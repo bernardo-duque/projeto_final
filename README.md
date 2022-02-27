@@ -12,6 +12,8 @@
 * [Dados dos candidatos](https://basedosdados.org/dataset/br-tse-eleicoes)
 * Cruzar com resultado das eleicoes? 2018 e 2020?
 
+As bases podem ser acessadas diretamente pelos link acima ou clicando [aqui](https://drive.google.com/drive/folders/13ozE9GhQaxSmfw-wjO_2QT_frnw5nHxU?usp=sharing)
+
 ## 2. Pastas
 
 ##### `/codigo`
