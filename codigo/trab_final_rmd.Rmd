@@ -12,9 +12,9 @@ header-includes:
  \floatplacement{figure}{H}
 ---
 ```{r setup, echo = F, include=FALSE}
-knitr::opts_chunk$set(warning = FALSE, message = FALSE,echo = F) 
+knitr::opts_chunk$set(warning = FALSE, message = FALSE,echo = F,fig.align = 'center') 
 setwd("C://Users//duque//Desktop//PUC//Mestrado//Verão 1//Estatística//Data Science//Trabalho Final//output")
-library(dplyr)
+library(tidyverse)
 library(kableExtra)
 library(ggplot2)
 library(wordcloud)
@@ -57,7 +57,7 @@ load("estatisticas_senadores.rda")
 
 ## Tratamento das strings
 
-\par Como visto na seção (#Dados Utilizados), a principal base utilizada foi a relativa aos discursos da CPI da Pandemia. Por se tratar de uma base cujos dados principais estavam no formato de texto (string), foi necessário um tratamento considerável dos dados para convertê-los em informação. Foram analisadas apenas as falas dos senadores; as dos depoentes foram filtradas. 
+\par Como visto na seção (#Dados Utilizados), a principal base utilizada foi a relativa aos discursos da CPI da Pandemia. Por se tratar de uma base cujos dados principais estavam no formato de texto (string), foi necessário um tratamento considerável dos dados para convertê-los em informação. Foram analisadas apenas as falas dos senadores; as dos depoentes foram filtradas. Vale ressaltar que foram considerados todos os senadores que fizeram algum discurso durante as sessões, mesmo caso não fosse integrante da comissão.
 
 \par De forma geral, o processo adotado para tratar as strings foi a chamada tokenização. Pegou-se todas as palavras contidas em cada discurso e cada uma foi transformada em uma linha com as demais informações duplicadas do discurso. Em seguida, foram retiradas as chamadas stop words, que são palavras que não acrescentam informação, mas geram ruído nas análises e aumentam o custo de processamento do algoritmo. 
 
@@ -144,9 +144,18 @@ matriz %>%
 
 \par A Figura 4 apresenta a primeira wordcloud, que foi construída após a tokenização dos discursos, enquanto a Figura 5 apresenta a wordcloud construída após o processo de *stemming*.
 
-![Nuvem de Palavras - antes do *stemming*](wordcloud_cpi.png)
+```{r, fig.width=4,fig.height=4}
+load("wc_1.rda")
+wordcloud::wordcloud(discurso_token$palavras, discurso_token$n, max.words = 50, min.freq = 1, 
+          random.order=FALSE, colors=brewer.pal(6,"Set1"), random.color=TRUE)
+```
 
-![Nuvem de Palavras - após *stemming*](wordcloud_cpi_stem.png)
+
+```{r, fig.width=4,fig.height=4}
+load("wc_2.rda")
+wordcloud::wordcloud(palavras$palavras, palavras$n, max.words = 50, min.freq = 1, 
+          random.order=FALSE, colors=brewer.pal(6,"Set1"), random.color=TRUE)
+```
 
 \par Fica evidente das duas figuras que as palavras mais ditas durante a comissão foram "Presidente", "Senador" e "Senhor". Também aparecem algumas abreviações como "Sr"(senhor) e "V"(Vossa Excelência). 
 
@@ -154,55 +163,140 @@ matriz %>%
 
 \par Outras palavras que merecem destaque são "ministério", "saude", "ministro" e "governo", que como era de se esperar numa CPI de saúde pública aparecem com bastante frequência. 
 
-## Dados obtidos do ML
+## Dados dos Senadores
+
+\par A tabela abaixo mostra dados descritivos dos senadores que participaram da comissão (inclusive os não-membros). Como será visto na última [seção](#limitacoes), 17 senadores de um total de 44 não tiveram seus dados encontrados.
+
+\par Porém, mesmo sem essas informações, conseguimos extrair um perfil que provavelmente não está muito viesado. Os senadores participantes foram em sua maioria, sem supresa alguma, homens, brancos de meia idade. `r round(9/35,2)`% dos participantes eram mulheres, `r round((21)/(21+4+2),2)`% eram brancos e a média de idade foi de cerca de 54 anos. 
+
+```{r}
+load("tabela.rda")
+tabela %>% 
+  kable(caption = "Perfil dos Senadores") %>%
+  kable_classic(html_font = "Cambria",font_size=10) %>%
+  row_spec(0,bold=T) %>%
+  add_header_above(c("Cor ou Raça" = 2, "Gênero" = 2, "Idade" = 1),bold=T) %>%
+  kable_styling(latex_options = c("hold_position"))
+```
+
+
+## Dados dos Discursos
+
+\par Vale ressaltar novamente que a análise dessa subseção não tem robustez dada a má especificação do modelo de ML. Porém, enquanto alguns resultados parecem duvidosos - especialmente na desagragação por senadores - a análise geral parece condizer com a impresssão anedótica.
 
 ### Discursos Totais
 
-\par A Figura 6 apresenta o número total de discursos por senadores durante a CPI. 
+\par A Figura 6 apresenta o número total de discursos por senadores durante a CPI e a Figura 7 apresenta a proporção de discursos positivos e negativos para o governo. Importante destacar que essa proporção foi construída desconsiderando os discursos neutros. A razão para isso fica evidente na discrepância exposta pela Figura 6, o que é somado ao fato de que o que importa aqui para a análise é justamente a diferença entre posições favoráveis e contrárias. 
+
+```{r,fig.width=5,fig.height=4}
+estatisticas_gerais_t <- estatisticas_gerais %>%
+  pivot_longer(cols = total:neutro_perc,values_to = "n",names_to = "valores") 
+
+a <- estatisticas_gerais_t %>%
+  filter(valores %in% c("total","favor","contra")) %>%
+  mutate(value = ifelse(valores=="total","Total",
+                        ifelse(valores == "favor","A Favor","Contra")))
+
+a %>%
+  ggplot(aes(x = value,y = n),
+         alpha = 0.9, col="white") +
+  geom_bar(stat='identity',fill = "darkblue",width = 0.5) +
+  labs(title = "Total de Discursos",x="",y="") +
+  theme(plot.title = element_text(face = "bold"), legend.title = element_blank()) + 
+  geom_text(aes(label = n), vjust = 2, size = 3, color = "#ffffff") + 
+  theme_bw()
+
+```
+
+```{r,fig.width=5,fig.height=4}
+
+a <- estatisticas_gerais_t%>%
+  mutate(total="discurso", posicao = ifelse(valores == "favor_perc","Favor",
+                                   ifelse(valores == "contra_perc","Contra",valores))) %>%
+  filter(posicao %in% c("Favor","Contra"))
+
+a %>%
+  ggplot(aes(fill=posicao, y=n, x=total)) + 
+  geom_bar(position="fill", stat="identity", width = 0.5) +
+  scale_fill_manual(values = c("#cc0000","darkgreen")) +
+  labs(title = "Proporção de Discursos Favoráveis e Contra",x="",y="") +
+  theme(plot.title = element_text(face = "bold"), legend.title = element_blank()) + 
+  geom_text(aes(label = n), vjust = 2, size = 3, color = "#ffffff") + 
+  theme_bw() + coord_flip()
+
+```
+
+\par Dentre os discursos não-neutros, cerca de 81% foram críticos ao governo federal. 
 
 ### Discursos por Senadores 
 
-\par A Figura
+\par Conseguimos também desagregar os dados por senadores. A figura abaixo mostra os 5 senadores que mais tiveram falas durante os trabalhos da comissão.
 
-```{r, fig.width=8,fig.height=6}
+```{r, fig.width=5,fig.height=4}
 
 a <- estatisticas_senadores %>%
   arrange(desc(total))
 
 a <- a[1:5,]
-a$nome_discursante <- c("O.Aziz","R.Calheiros","Randolfe","M.Rogerio","Elizane")
+a$nome_discursante <- c("O.Aziz","R.Calheiros","Randolfe","M.Rogério","Elizane")
 
 a %>%
   ggplot(aes(x = nome_discursante,y = total),
          alpha = 0.9, col="white") +
-  geom_bar(stat='identity',fill = "darkblue") +
+  geom_bar(stat='identity',fill = "darkblue",width = 0.5) +
   labs(title = "Total de Discursos por Senador",subtitle = "Top 5 senadores",x="",y="") +
   theme(plot.title = element_text(face = "bold"), legend.title = element_blank()) + 
-  geom_text(aes(label = total), vjust = 2, size = 5, color = "#ffffff") + 
+  geom_text(aes(label = total), vjust = 2, size = 3, color = "#ffffff") + 
   theme_bw()
 
 ```
 
+\par Como era de se esperar, os 3 senadores que mais participaram foram o presiedente, o relator e o vice-presidente da comissão, respectivamente, que são os membros que têm papéis extras nas investigações, com funções burocráticas. O senador Randolfe, além de vice-presidente, foi também o parlamentar que protocolou a criação da CPI. 
 
-```{r}
+\par Em 4o lugar temos o senador Marcos Rogério, que ficou conhecido como ferrenho defensor do Governo Federal ao longo do período que a investigação estava ocorrendo. As Figuras 
+
+```{r, fig.width=5,fig.height=4}
 
 a <- estatisticas_senadores %>%
   arrange(desc(favor))
 
 a <- a[1:5,]
+a$nome_discursante <- c("E.Girão","M.Rogério","O.Aziz","F.Bezerra","Randolfe")
 
 a %>%
   ggplot(aes(x = nome_discursante,y = favor),
          alpha = 0.9, col="white") +
-  geom_bar(stat='identity',fill = "#339900") +
+  geom_bar(stat='identity',fill = "darkgreen", width = 0.5) +
   labs(title = "Total de Discursos a Favor do Governo por Senador",subtitle = "Top 5 senadores",x="",y="") +
   theme(plot.title = element_text(face = "bold"), legend.title = element_blank()) + 
-  geom_text(aes(label = favor), vjust = 2, size = 5, color = "#ffffff") +
+  geom_text(aes(label = favor), vjust = 2, size = 3, color = "#ffffff") +
   theme_bw()
 
 ```
 
 
+
+```{r, fig.width=5,fig.height=4}
+a <- estatisticas_senadores %>%
+  arrange(desc(contra))
+
+a <- a[1:5,]
+a$nome_discursante <- c("R.Calheiros","O.Aziz","Randolfe","Humberto","R.Carvalho")
+
+a %>%
+  ggplot(aes(x = nome_discursante,y = contra),
+         alpha = 0.9, col="white") +
+  geom_bar(stat='identity',fill = "#cc0000",width = 0.5) +
+  labs(title = "Total de Discursos Contra o Governo por Senador",subtitle = "Top 5 senadores",x="",y="") +
+  theme(plot.title = element_text(face = "bold"), legend.title = element_blank()) + 
+  geom_text(aes(label = contra), vjust = 2, size = 3, color = "#ffffff")+
+  theme_bw()
+
+```
+
+## Dados Covid 
+
+\par Com a base construída neste trabalho, podemos analisar também os dados da covid e ver quais estados tiveram mais discursos contra a atuação do governo federal e quais sofreram mais com a pandemia em termos de casos confirmados por 100 mil habitantes e taxa de mortalidade. 
 
 # Conclusão e Limitações {#limitacoes}
 
