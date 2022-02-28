@@ -31,3 +31,13 @@ As bases podem ser acessadas diretamente pelos link acima ou clicando [aqui](htt
 - Figuras incluídas na subpasta `/figures` como png
 - Tabelas incluídas na subpast `/tables` como png
 
+## Citação para o template utilizado
+
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+- family-names: "Dahis"
+  given-names: "Ricardo"
+title: "Template Repository for Research Papers"
+date-released: 2021-11-10
+url: "https://github.com/rdahis/paper_template"
