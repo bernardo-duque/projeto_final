@@ -655,3 +655,5 @@ estados %>%
 dev.off()
 
 save(estados, file = "estados_sen_cov.rda")
+
+write.csv(estados,file = "estados_sen_cov.csv")
