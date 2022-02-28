@@ -87,7 +87,7 @@ set.seed(23022022)
 discurso_manual <- sample_n(discurso,size = 1000,replace = F) %>%
   select(id_linha,nome_discursante,texto_discurso)
 
-#write_xlsx(discurso_manual, path = "discurso_manual.xlsx")
+write_xlsx(discurso_manual, path = "discurso_manual.xlsx")
 
 
 # pegando o vetor de nomes 
