@@ -21,7 +21,8 @@ setwd("C://Users//duque//Desktop//PUC//Mestrado//Verão 1//Estatística//Data Scie
 
 pacman::p_load(sf, tidyverse, geobr, ggplot2, terra, spData, stringr, caret,
                stopwords, tictoc, foreach, SnowballC, hunspell, quanteda, readxl,writexl,
-               tidytext, RColorBrewer, tm, wordcloud, ranger, xgboost, grDevices, reshape2)
+               tidytext, RColorBrewer, tm, wordcloud, ranger, xgboost, grDevices, reshape2,
+               highcharter, webshot, htmlwidgets, kableExtra, magick, htmltools)
 
 ##### 1. Importando e limpando as bases relacionadas aos candidatos #####
 
@@ -134,12 +135,15 @@ discurso_token <- discurso_ml %>%
 
 setwd("C://Users//duque//Desktop//PUC//Mestrado//Verão 1//Estatística//Data Science//Trabalho Final//output")
 
-png(filename = "wordcloud_cpi.png",width = 1000,height = 1000)
+grDevices::png(filename = "wordcloud_cpi.png",width = 300,height = 300)
 
-wordcloud(discurso_token$palavras, discurso_token$n, max.words = 50, min.freq = 1, 
+wordcloud::wordcloud(discurso_token$palavras, discurso_token$n, max.words = 50, min.freq = 1, 
           random.order=FALSE, colors=brewer.pal(6,"Dark2"), random.color=TRUE)
 
 dev.off()
+
+# salvando para gerar no rmd
+save(discurso_token,file = "wc_1.rda")
 
 setwd("C://Users//duque//Desktop//PUC//Mestrado//Verão 1//Estatística//Data Science//Trabalho Final//input")
 
@@ -161,12 +165,17 @@ palavras <- discurso_ml %>%
 
 setwd("C://Users//duque//Desktop//PUC//Mestrado//Verão 1//Estatística//Data Science//Trabalho Final//output")
 
-png(filename = "wordcloud_cpi_stem.png",width = 1000,height = 1000)
+grDevices::png(filename = "wordcloud_cpi_stem.png",width = 300,height = 300)
 
-wordcloud(palavras$palavras, palavras$n, max.words = 50, min.freq = 1, 
+wordcloud::wordcloud(palavras$palavras, palavras$n, max.words = 50, min.freq = 1, 
           random.order=FALSE, colors=brewer.pal(6,"Dark2"), random.color=TRUE)
 
 dev.off()
+
+# salvando para gerar no rmd
+save(palavras,file = "wc_2.rda")
+
+rm(palavras)
 
 setwd("C://Users//duque//Desktop//PUC//Mestrado//Verão 1//Estatística//Data Science//Trabalho Final//input")
 
@@ -370,15 +379,21 @@ setwd("C://Users//duque//Desktop//PUC//Mestrado//Verão 1//Estatística//Data Scie
 write.csv(discurso,"discurso_cpi_classificado.csv")
 
 matriz <- matriz %>% 
-  select(Precision:Prevalence,`Balanced Accuracy`)
+  select(Precision:Prevalence)
 
 save(matriz, file = "matriz.rda")
 
+## Formatando tabela da matriz de confusão
+
+matriz_form <- matriz %>% 
+  kable() %>%
+  kable_classic(full_width = T, html_font = "Cambria",font_size=12) %>%
+  column_spec(1, bold = T) %>%
+  row_spec(0,bold=T) 
+
+save_kable(matriz_form,file = "matriz_form.png")
   
 ##### 3 - Estatísticas Descritivas #####
-
-
-####---- 3.1 Numeros de discursos totais por senador ----####
 
 # transformando a classificacao em dummies
 
@@ -404,84 +419,99 @@ estatisticas_gerais <- discurso %>%
             contra_perc = round(contra/(favor + contra),2),
             neutro_perc = round((favor+contra)/total,2))
 
-## criando as tabelas  
+save(estatisticas_gerais,file="estatisticas_gerais.rda")
+save(estatisticas_senadores,file = "estatisticas_senadores.rda")
 
-# mais discursos
+####---- 3.1 Número de discursos totais gerais ----####
 
-png(filename = "mais_discursos.png",width = 1000,height = 800)
+# Números absolutos
 
-a <- estatisticas_senadores %>%
-  ungroup() %>%
-  arrange(desc(total)) %>%
-  group_by(nome_discursante)
+grDevices::png(filename = "absolutos_gerais.png",width = 600,height = 600)
 
-a <- melt(a[,c('nome_discursante','total','contra_perc')],id.vars = 1)
+estatisticas_gerais_t <- estatisticas_gerais %>%
+  pivot_longer(cols = total:neutro_perc,values_to = "n",names_to = "valores") 
 
-b <- a[1:5,]$nome_discursante
-a <- a %>%
-  filter(nome_discursante %in% b) %>%
-  mutate(value = ifelse(value<1,value*10000,value))
+a <- estatisticas_gerais_t %>%
+  filter(valores %in% c("total","favor","contra")) %>%
+  mutate(value = ifelse(valores=="total","Total",
+                        ifelse(valores == "favor","A Favor","Contra")))
 
 a %>%
-  ggplot(aes(x = nome_discursante,y = value),
+  ggplot(aes(x = value,y = n),
          alpha = 0.9, col="white") +
-  geom_col(stat='identity',fill = variable,position = position_dodge()) +
-  labs(title = "Total de Discursos por Senador",subtitle = "Top 5 senadores",x="",y="") +
-  theme(plot.title = element_text(face = "bold"), legend.title = element_blank()) 
+  geom_bar(stat='identity',fill = "darkblue",width = 0.5) +
+  labs(title = "Total de Discursos",x="",y="") +
+  theme(plot.title = element_text(face = "bold"), legend.title = element_blank()) + 
+  geom_text(aes(label = n), vjust = 2, size = 3, color = "#ffffff") + 
+  theme_bw()
 
 dev.off()
 
+# Proporção
 
+grDevices::png(filename = "proporcao_geral.png",width = 600,height = 600)
 
-ggplot(a,aes(x = nome_discursante,y = value)) + 
-  geom_bar(aes(fill = variable),stat = "identity",position = "dodge") +
-  geom_text(aes(label = c(value[1],value[2]/10000)), vjust = 2, size = 5, color = "#ffffff")
+a <- estatisticas_gerais_t%>%
+  mutate(total="discurso", posicao = ifelse(valores == "favor_perc","Favor",
+                                            ifelse(valores == "contra_perc","Contra",valores))) %>%
+  filter(posicao %in% c("Favor","Contra"))
 
+a %>%
+  ggplot(aes(fill=posicao, y=n, x=total)) + 
+  geom_bar(position="fill", stat="identity", width = 0.5) +
+  scale_fill_manual(values = c("#cc0000","darkgreen")) +
+  labs(title = "Proporção de Discursos Favoráveis e Contra",x="",y="") +
+  theme(plot.title = element_text(face = "bold"), legend.title = element_blank()) + 
+  geom_text(aes(label = n), vjust = 2, size = 3, color = "#ffffff") + 
+  theme_bw() + coord_flip()
 
+dev.off()
 
+####---- 3.2 Numeros de discursos totais por senador ----####
 
-
-
+## Criando as tabelas  
 
 # mais discursos
   
-png(filename = "mais_discursos.png",width = 1000,height = 800)
+grDevices::png(filename = "mais_discursos.png",width = 600,height = 600)
 
 a <- estatisticas_senadores %>%
   arrange(desc(total))
 
 a <- a[1:5,]
+a$nome_discursante <- c("O.Aziz","R.Calheiros","Randolfe","M.Rogerio","Elizane")
 
 a %>%
   ggplot(aes(x = nome_discursante,y = total),
          alpha = 0.9, col="white") +
-  geom_bar(stat='identity',fill = "#0099f9") +
+  geom_bar(stat='identity',fill = "darkblue",width = 0.5) +
   labs(title = "Total de Discursos por Senador",subtitle = "Top 5 senadores",x="",y="") +
   theme(plot.title = element_text(face = "bold"), legend.title = element_blank()) + 
-  geom_text(aes(label = total), vjust = 2, size = 5, color = "#ffffff")
+  geom_text(aes(label = total), vjust = 2, size = 3, color = "#ffffff")
 
 dev.off()
 
 # mais discursos favoraveis 
 
-png(filename = "mais_favor.png",width = 1000,height = 800)
+grDevices::png(filename = "mais_favor.png",width = 1000,height = 800)
 
 a <- estatisticas_senadores %>%
   arrange(desc(favor))
 
 a <- a[1:5,]
+a$nome_discursante <- c("E.Girão","M.Rogério","O.Aziz","F.Bezerra","Randolfe")
 
 a %>%
   ggplot(aes(x = nome_discursante,y = favor),
          alpha = 0.9, col="white") +
-  geom_bar(stat='identity',fill = "#339900") +
+  geom_bar(stat='identity',fill = "darkgreen",width = 0.5) +
   labs(title = "Total de Discursos a Favor do Governo por Senador",subtitle = "Top 5 senadores",x="",y="") +
   theme(plot.title = element_text(face = "bold"), legend.title = element_blank()) + 
-  geom_text(aes(label = favor), vjust = 2, size = 5, color = "#ffffff")
+  geom_text(aes(label = favor), vjust = 2, size = 3, color = "#ffffff")
 
 dev.off()
 
-png(filename = "mais_contra.png",width = 1000,height = 800)
+grDevices::png(filename = "mais_contra.png",width = 1000,height = 800)
 
 # mais discursos contra 
 
@@ -489,29 +519,139 @@ a <- estatisticas_senadores %>%
   arrange(desc(contra))
 
 a <- a[1:5,]
+a$nome_discursante <- c("R.Calheiros","O.Aziz","Randolfe","Humberto","R.Carvalho")
 
 a %>%
   ggplot(aes(x = nome_discursante,y = contra),
          alpha = 0.9, col="white") +
-  geom_bar(stat='identity',fill = "#cc0000") +
+  geom_bar(stat='identity',fill = "#cc0000",width = 0.5) +
   labs(title = "Total de Discursos Contra o Governo por Senador",subtitle = "Top 5 senadores",x="",y="") +
   theme(plot.title = element_text(face = "bold"), legend.title = element_blank()) + 
-  geom_text(aes(label = contra), vjust = 2, size = 5, color = "#ffffff")
+  geom_text(aes(label = contra), vjust = 2, size = 3, color = "#ffffff")
 
 dev.off()
 
 ####---- 3.2 Distribuição por estado, genero e partido ----####
 
-## Distribuição por estado
+## estatisticas senadores
 
-# pegando o mapa dos estados
+senadores <- discurso %>%
+  group_by(nome_discursante,sigla_partido.x,sigla_uf_partido,genero_discursante,idade_df,raca_df) %>%
+  summarise(across(Neutro:`A favor`,sum))
 
-estados <- read_state(code_state = "all", year = 2020)
+# salva a base dos senadores 
 
-rio_de_janeiro %>%
+write.csv(senadores,file = "senadores.csv")
+
+idade <- c(round(base::mean(senadores$idade_df,na.rm=T),1),"","","", "")
+
+genero <- senadores %>%
+  mutate(row=row_number(),n = 1,genero_discursante = ifelse(is.na(genero_discursante),"N/A",genero_discursante)) %>%
+  select(row,everything())
+genero <- genero %>%
+  pivot_wider(id_cols = row,values_from = n,names_from = genero_discursante,values_fn = sum) %>%
+  mutate(Total = Masculino + Feminino) %>%
+  select(-row)
+
+raca <- senadores %>%
+  mutate(row=row_number(),n = 1,raca_df = ifelse(is.na(raca_df),"N/A",raca_df)) %>%
+  select(row,everything())
+raca <- raca %>%
+  pivot_wider(id_cols = row,values_from = n,names_from = raca_df,values_fn = sum) %>%
+  mutate(Total = branca + parda + preta + `N/A`) %>%
+  select(-row)
+
+genero_col <- colnames(genero) %>%
+  rbind(genero)
+genero_col <- t(genero_col) %>%
+  rbind(c("","")) %>%
+  rbind(c("",""))
+
+raca_col <- colnames(raca)%>%
+  rbind(raca)
+raca_col <- t(raca_col)
+
+idade <- as.data.frame(idade)
+
+tabela <- cbind(raca_col,genero_col,idade)
+colnames(tabela) <- c("Cor ou Raça","N senadores","Gênero","N de senadores","Média")
+rownames(tabela) <- NULL
+
+save(tabela,file = "tabela.rda")
+
+# formatando
+
+tabela <- tabela %>% 
+  kable(caption = "Perfil dos Senadores") %>%
+  kable_classic(html_font = "Cambria",font_size=10) %>%
+  row_spec(0,bold=T) %>%
+  add_header_above(c("Cor ou Raça" = 2, "Gênero" = 2, "Idade" = 1)) %>%
+  kable_styling(latex_options = c("hold_position"))
+
+save_kable(tabela,file = "tabela.png")
+
+## mapa
+
+estados <- read_country(year = 2020)
+
+disc_est <- senadores %>%
+  group_by(sigla_uf_partido) %>%
+  summarise(across(Neutro:`A favor`,sum))
+
+estados <- estados %>%
+  left_join(disc_est,by = c("abbrev_state"="sigla_uf_partido")) %>%
+  mutate(Neutro = ifelse(is.na(Neutro)==T,0,Neutro),
+         Contra = ifelse(is.na(Contra)==T,0,Contra),
+         `A favor` = ifelse(is.na(`A favor`)==T,0,`A favor`))
+
+# mapa discursos
+
+grDevices::png(filename = "mapa_discurso.png",width = 1000,height = 800)
+
+estados %>%
   ggplot() +
-  geom_sf(aes(fill=pct_cobertura), alpha = 0.8, col="white") +
-  scale_fill_viridis_c(name = "Porcentagem", labels = scales::comma) + 
-  labs(title = "Cobertura vegetal no Estado do Rio de Janeiro", subtitle = "Porcentagem por município", caption = "Fonte: MapBiomas, IPEA") +
+  geom_sf(aes(fill=Contra), alpha = 0.9, col="white") +
+  scale_fill_gradient(name = "N", labels = scales::comma,low = "pink1",high = "#cc0000",na.value = "grey") + 
+  labs(title = "Número de Discursos Contra o Governo Federal") +
   theme(plot.title = element_text(face = "bold"))
-##### 1.3 - Dados Covid #####
+
+dev.off()
+
+## Casos de Covid
+
+# filtrando os casos para o acumulado até o primeiro dia da CPI
+
+casos <- casos %>%
+  filter(date == "2021-04-27", place_type=="state") %>%
+  select(state,confirmed_per_100k_inhabitants,death_rate)
+
+estados <- estados %>%
+  left_join(casos,by = c("abbrev_state"="state"))
+
+# mapa casos
+
+grDevices::png(filename = "mapa_casos.png",width = 1000,height = 800)
+
+estados %>%
+  ggplot() +
+  geom_sf(aes(fill=confirmed_per_100k_inhabitants), alpha = 0.9, col="white") +
+  scale_fill_gradient(name = "100mil habitantes", labels = scales::comma,low = "lightyellow",high = "gold",na.value = "grey") + 
+  labs(title = "Número de Casos de Covid Confirmados até o Ínicio da CPI por 100k") +
+  theme(plot.title = element_text(face = "bold"))
+
+dev.off()
+
+# mapa mortes
+
+grDevices::png(filename = "mapa_mortes.png",width = 1000,height = 800)
+
+estados %>%
+  ggplot() +
+  geom_sf(aes(fill=death_rate), alpha = 0.9, col="white") +
+  scale_fill_gradient(name = "Taxa de Mortalidade", labels = scales::comma,low = "plum",high = "purple4",na.value = "grey") + 
+  labs(title = "Taxa de Mortalidade por Estado até o Ínicio da CPI") +
+  theme(plot.title = element_text(face = "bold"))
+
+dev.off()
+
+save(estados, file = "estados_sen_cov.rda")
